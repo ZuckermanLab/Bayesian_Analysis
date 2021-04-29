@@ -1,8 +1,8 @@
+# August George - 2021
 import numpy as np
 import pandas as pd
 import scipy.stats as stats
 import ray
-import multiprocessing as mp
 
 
 def calc_y(p):
@@ -72,7 +72,7 @@ def create_grid_coord(p_input, verbose=True):
 
 def score_grid(grid, verbose=True):
     """
-    Calculates likelihood, probability, and effective sample size
+    Calculates relative log-likelihood, likelihood, probability, and effective sample size
     :param grid: a dataframe where row_i is parameter set_i and col_i is parameter_i. must also contain 'logl' col
     :param verbose: a boolean which turns on/off text output
     :return: an updated 'grid' dataframe containing additional columns for log-likelihood, likelihood, and probability
@@ -95,7 +95,7 @@ def resample_grid(scored_grid, M, verbose=True):
     :param scored_grid: a dataframe containing a 'p(x)' column of probability densities (sum p = 1)
     :param M: integer number of resamples to take
     :param verbose: a boolean which turns on/off text output
-    :return: a filtered version of the scored grid containing only the resampled values
+    :return: a filtered version of the scored grid containing only the resampled values, effective sample size
     """
 
     if verbose:
@@ -123,35 +123,36 @@ if __name__ == '__main__':
 
     # parameter mesh grid settings
     N = 10  # number of resampled points
-    p_input = [('mu_1', -10, 10, 3),
-               ('mu_2', -10, 10, 3),
-               ('mu_3', -10, 10, 3),
-               ('mu_4', -10, 10, 3),
-               ('c_1', 0.1, 1, 3),
-               ('c_2', 0.1, 1, 3),
-               ('c_3', 0.1, 1, 3),
-               ('c_4', 0.1, 1, 3),
-               ('sigma', 1e-3, 3e-3, 3)]
+    p_input = [('mu_1', -10, 10, 5),
+               ('mu_2', -10, 10, 5),
+               ('mu_3', -10, 10, 5),
+               ('mu_4', -10, 10, 5),
+               ('c_1', 0.1, 1, 5),
+               ('c_2', 0.1, 1, 5),
+               ('c_3', 0.1, 1, 5),
+               ('c_4', 0.1, 1, 5),
+               ('sigma', 1e-3, 3e-3, 5)]
 
-    coord_df = create_grid_coord(p_input, verbose=True)  # calculate parameter mesh grid
+    mg_df = create_grid_coord(p_input, verbose=True)  # calculate parameter mesh grid
 
-    # start logl parallelization
-    mg_id = ray.put(coord_df)  # ray stores the object id of the mesh grid --> don't have to make copies
-    logl_df = coord_df.copy()  # new df for log-likelihoods
-    logl_df['logl'] = np.nan
+    ### start logl parallelization
+    mg_id = ray.put(mg_df)  # ray stores the object id of the mesh grid --> don't have to make copies
 
     @ray.remote  # used to run ray remote function - this is run in parallel
     def f(i, df):
         """ This calculates the log likelihood based on the observed data and theta"""
         return calc_logl(y_obs, theta=df.iloc[i] )
 
+    logl_id_list = []
+    for i in range(len(mg_df.index)):
+        logl_id_list.append( f.remote(i, mg_id))  # list (in the same order as meh grid index)
+    logl_list = ray.get(logl_id_list)
+    mg_df['logl'] = logl_list  # new df for log-likelihoods
+    ### end logl parallelization
 
-    for i in range(len(coord_df.index)):
-        logl_df['logl', i] = f.remote(i, mg_id)
-    ray.get()
-    # end logl parallelization
+    print(mg_df)
 
-    score_df = score_grid(logl_df, verbose=True)  # relative log-likelihood, likelihood, probability density
-    start_points, ESS = resample_grid(score_df, N)  # df of start points, effective sample size
-    print(f'ESS estimate: {ESS}')
+    score_df = score_grid(mg_df, verbose=True)  # df relative log-likelihood, likelihood, probability density
+    start_points, ESS = resample_grid(score_df, N, verbose=True)  # df of start points, effective sample size
+
 
