@@ -60,7 +60,7 @@ if __name__ == '__main__':
     print('calculating log-likelihood...')
     for i in range(len(mg_df.index)):
         logl_id_list.append( f.remote(i, mg_id))  # list (in the same order as meh grid index)
-    logl_list = ray.get(logl_id_list)
+    logl_list = ray.get(logl_id_list)  # run ray remote functions
 
     mg_df['logl'] = logl_list  # new df for log-likelihoods
     score_df = mg.score_grid(mg_df, verbose=True)  # df relative log-likelihood, likelihood, probability density

@@ -57,14 +57,14 @@ def score_grid(grid, verbose=True):
     Calculates relative log-likelihood, likelihood, probability, and effective sample size
     :param grid: a dataframe where row_i is parameter set_i and col_i is parameter_i. must also contain 'logl' col
     :param verbose: a boolean which turns on/off text output
-    :return: an updated 'grid' dataframe containing additional columns for log-likelihood, likelihood, and probability
+    :return: an updated 'grid' dataframe containing additional columns for rel log-likelihood, likelihood, and weights
     """
 
     if verbose:
         print('scoring grid...')
     grid['rel logl'] = (grid['logl'] - np.max(grid['logl']))  # log(p/p_max) --> log(p) -max(log(p))
     grid['rel like'] = np.exp(grid['rel logl'])  # log(p) --> p = exp(log(p))
-    grid['p(x)'] = grid['like']/np.sum(grid['like'])  # sum(p) = 1
+    grid['weight'] = grid['rel like']/np.sum(grid['rel like'])  # sum(p) = 1
     if verbose:
         print(f'{grid}')
     return grid
@@ -81,9 +81,9 @@ def resample_grid(scored_grid, M, verbose=True):
 
     if verbose:
         print('resampling grid...')
-    start_idx = np.random.choice(np.arange(len(scored_grid.index)), size=M, replace=True, p=scored_grid['p(x)'])
+    start_idx = np.random.choice(np.arange(len(scored_grid.index)), size=M, replace=True, p=scored_grid['weight'])
     start_p_sets = scored_grid.iloc[start_idx]
-    ess = np.sum(scored_grid['p(x)']) / np.max(scored_grid['p(x)'])
+    ess = np.sum(scored_grid['weight']) / np.max(scored_grid['weight'])
     if verbose:
         print(start_p_sets)
         print(f'ESS estimate: {ess}')
