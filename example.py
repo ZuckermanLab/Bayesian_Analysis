@@ -1,3 +1,6 @@
+# August George - 2021
+# An example using MeshGrid.py on a mixed Gaussian model
+
 import MeshGrid as mg
 import scipy.stats as stats
 import numpy as np

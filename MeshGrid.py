@@ -1,8 +1,7 @@
 # August George - 2021
+# Collected scripts to help create a mesh grid in parameter space
 import numpy as np
 import pandas as pd
-import scipy.stats as stats
-import ray
 
 
 def calc_logl(y_obs, theta, func):
