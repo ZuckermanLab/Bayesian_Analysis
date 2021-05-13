@@ -43,15 +43,15 @@ if __name__ == '__main__':
 
     # parameter mesh grid settings
     N = 10  # number of resampled points
-    p_input = [('mu_1', -10, 10, 3),
-               ('mu_2', -10, 10, 3),
-               ('mu_3', -10, 10, 3),
-               ('mu_4', -10, 10, 3),
-               ('c_1', 0.1, 1, 3),
-               ('c_2', 0.1, 1, 3),
-               ('c_3', 0.1, 1, 3),
-               ('c_4', 0.1, 1, 3),
-               ('sigma', 1e-3, 3e-3, 3)]
+    p_input = [('mu_1', -10, 10, 4),
+               ('mu_2', -10, 10, 4),
+               ('mu_3', -10, 10, 4),
+               ('mu_4', -10, 10, 4),
+               ('c_1', 0.1, 1, 4),
+               ('c_2', 0.1, 1, 4),
+               ('c_3', 0.1, 1, 4),
+               ('c_4', 0.1, 1, 4),
+               ('sigma', 1e-3, 3e-3, 4)]
 
     mg_df = mg.create_grid_coord(p_input, verbose=True)  # calculate parameter mesh grid
 
@@ -65,7 +65,8 @@ if __name__ == '__main__':
     b_size = 10000  # how many parameter sets per batch
     mg_df_b = mg_df.groupby(np.arange(len(mg_df)) // b_size)  # note: integer divison for non-even grouping
     b_w = {}  # weights for each batch
-    s = []  # starting point batches
+    ess_b = {}  # ess for each batch
+    s = []  # starting point 'sub batches'
 
     for i, mg_b in mg_df_b:
         mg_id = ray.put(mg_b)  # store ref to batch df to save memory
@@ -75,11 +76,11 @@ if __name__ == '__main__':
             logl_ref_list_b.append(f.remote(j, mg_id))  # list (in the same order as meh grid index)
         logl_list_b = ray.get(logl_ref_list_b)  # run ray remote functions
         mg_b['logl'] = logl_list_b  # add logl to dataframe
-        score_df = mg.score_grid(mg_b, verbose=True)  # score batch
-        start_points, ESS = mg.resample_grid(score_df, N, verbose=True)  # down sample to N
-        b_w[f'batch {i}'] = score_df['rel like'].sum()  # add batch weight
+        score_df, ess, log10_b_w = mg.score_grid_batch(mg_b, verbose=True)  # score batch
+        start_points = mg.resample_grid_batch(score_df, N, verbose=True)  # resample sample down to N
+        b_w[f'batch {i}'] = log10_b_w  # store batch weight
+        ess_b[f'batch {i}'] = ess  # store ess
         s.append(start_points)
-
 
         # debugging: use this to see how much virtual memory is being used and to reset it
         print('\ndebugging:')
@@ -88,17 +89,19 @@ if __name__ == '__main__':
         gc.collect()
 
     # create batch weight df, calculate batch weights
-    b_w_df = pd.DataFrame(list(b_w.items()), columns=['batch n', 'batch rel like'])
-    b_w_df['rel batch weight'] = b_w_df['batch rel like']/b_w_df['batch rel like'].sum()
-    b_idx = np.random.choice(np.arange(len(b_w_df.index)), size=N, replace=True, p=b_w_df['rel batch weight'])
+    b_w_df = pd.DataFrame(list(b_w.items()), columns=['batch n', 'log10 batch weight'])
+    b_w_df['rel batch weight'] = b_w_df['log10 batch weight']/b_w_df['log10 batch weight'].max()
+    b_w_df['rel batch weight norm'] = b_w_df['rel batch weight'] / b_w_df['rel batch weight'].sum()
+    b_idx = np.random.choice(np.arange(len(b_w_df.index)), size=N, replace=True, p=b_w_df['rel batch weight norm'])
+    print(f'batch weights:\n {b_w_df}')
 
     starting_points = []
     for i in b_idx:
         ss = s[i]  # select batch based on relative batch weight (b_idx)
-        sp = ss.sample()  # randomly sample from group
+        sp = ss.sample()  # randomly (uniform) sample from group
         starting_points.append(sp)
     start_df = pd.concat(starting_points)
-    print(start_df)
+    print(f'start points:\n {start_df}')
 
     # # regular procedure
     # mg_id = ray.put(mg_df)  # ray stores the object id of the mesh grid --> don't have to make copies
@@ -111,4 +114,4 @@ if __name__ == '__main__':
     #
     # mg_df['logl'] = logl_list  # new df for log-likelihoods
     # score_df = mg.score_grid(mg_df, verbose=True)  # df relative log-likelihood, likelihood, probability density
-    # start_points, ESS = mg.resample_grid(score_df, N, verbose=True)  # df of start points, effective sample size
+    

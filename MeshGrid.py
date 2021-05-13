@@ -90,5 +90,45 @@ def resample_grid(scored_grid, M, verbose=True):
     return (start_p_sets, ess)
 
 
+def score_grid_batch(grid, verbose=True):
+    """
+    Calculates relative log-likelihood, likelihood, probability, and effective sample size
+    :param grid: a dataframe where row_i is parameter set_i and col_i is parameter_i. must also contain 'logl' col
+    :param verbose: a boolean which turns on/off text output
+    :return: an updated 'grid' dataframe containing additional columns for rel log-likelihood, likelihood, and weights
+    """
+
+    if verbose:
+        print('scoring grid...')
+    grid['rel logl'] = (grid['logl'] - np.max(grid['logl']))  # log(p/p_max) --> log(p) -max(log(p))
+    grid['rel like'] = np.exp(grid['rel logl'])  # log(p) --> p = exp(log(p))
+    grid['rel like norm'] = grid['rel like']/np.sum(grid['rel like'])  # sum(p) = 1 for resampling
+    ess = np.sum(grid['rel like'])  # ESS = sum(likelihood)/max
+    b_w_log10 = np.log10(ess) + np.max(grid['logl'])
+    if verbose:
+        print(f'{grid}')
+        print(f'ess: {ess}')
+        print(f'log10(batch weight): {b_w_log10}')
+    return grid, ess, b_w_log10
+
+
+def resample_grid_batch(scored_grid, M, verbose=True):
+    """
+    Resample from the dataframe of parameter sets based on likelihood probabilities
+    :param scored_grid: a dataframe containing a 'p(x)' column of probability densities (sum p = 1)
+    :param M: integer number of resamples to take
+    :param verbose: a boolean which turns on/off text output
+    :return: a filtered version of the scored grid containing only the resampled values, effective sample size
+    """
+
+    if verbose:
+        print('resampling grid batch...')
+    start_idx = np.random.choice(np.arange(len(scored_grid.index)), size=M, replace=True, p=scored_grid['rel like norm'])
+    start_p_sets = scored_grid.iloc[start_idx]
+    if verbose:
+        print(start_p_sets)
+    return (start_p_sets)
+
+
 if __name__ == '__main__':
     pass
