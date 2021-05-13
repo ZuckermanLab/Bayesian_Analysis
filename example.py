@@ -65,9 +65,10 @@ if __name__ == '__main__':
     b_size = 10000  # how many parameter sets per batch
     mg_df_b = mg_df.groupby(np.arange(len(mg_df)) // b_size)  # note: integer divison for non-even grouping
     b_w = {}  # weights for each batch
-    s = []
+    s = []  # starting point batches
+
     for i, mg_b in mg_df_b:
-        mg_id = ray.put(mg_b)
+        mg_id = ray.put(mg_b)  # store ref to batch df to save memory
         print(f'calculating log-likelihood for batch {i}...')
         logl_ref_list_b = []
         for j in range(len(mg_b.index)):
@@ -76,8 +77,8 @@ if __name__ == '__main__':
         mg_b['logl'] = logl_list_b  # add logl to dataframe
         score_df = mg.score_grid(mg_b, verbose=True)  # score batch
         start_points, ESS = mg.resample_grid(score_df, N, verbose=True)  # down sample to N
-        s.append(start_points)  # add to list of starting point sub samples
-        b_w[f'batch {i}'] = start_points['weight'].sum()  # add batch weight
+        b_w[f'batch {i}'] = score_df['rel like'].sum()  # add batch weight
+        s.append(start_points)
 
 
         # debugging: use this to see how much virtual memory is being used and to reset it
@@ -86,9 +87,9 @@ if __name__ == '__main__':
         print('reseting memory...\n')
         gc.collect()
 
-    b_w_df = pd.DataFrame(list(b_w.items()), columns=['batch n', 'batch weight'])
-    b_w_df['rel batch weight'] = b_w_df['batch weight']/b_w_df['batch weight'].sum()
-
+    # create batch weight df, calculate batch weights
+    b_w_df = pd.DataFrame(list(b_w.items()), columns=['batch n', 'batch rel like'])
+    b_w_df['rel batch weight'] = b_w_df['batch rel like']/b_w_df['batch rel like'].sum()
     b_idx = np.random.choice(np.arange(len(b_w_df.index)), size=N, replace=True, p=b_w_df['rel batch weight'])
 
     starting_points = []
@@ -96,8 +97,8 @@ if __name__ == '__main__':
         ss = s[i]  # select batch based on relative batch weight (b_idx)
         sp = ss.sample()  # randomly sample from group
         starting_points.append(sp)
-
-    print(starting_points)
+    start_df = pd.concat(starting_points)
+    print(start_df)
 
     # # regular procedure
     # mg_id = ray.put(mg_df)  # ray stores the object id of the mesh grid --> don't have to make copies

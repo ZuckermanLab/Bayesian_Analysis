@@ -3,10 +3,10 @@
 import numpy as np
 import pandas as pd
 
-
+### NOT CURRENTLY USED
 def calc_logl(y_obs, theta, func):
     """
-    Calculates the (normal) log-likelihood
+    NOT CURRENTLY USED Calculates the (normal) log-likelihood
     :param y_obs: array of observed data
     :param theta: array of parameters - a single parameter set - SIGMA at the end
     :param func: function which inputs a list of parameters and outputs the predicted value
@@ -64,7 +64,7 @@ def score_grid(grid, verbose=True):
         print('scoring grid...')
     grid['rel logl'] = (grid['logl'] - np.max(grid['logl']))  # log(p/p_max) --> log(p) -max(log(p))
     grid['rel like'] = np.exp(grid['rel logl'])  # log(p) --> p = exp(log(p))
-    grid['weight'] = grid['rel like']/np.sum(grid['rel like'])  # sum(p) = 1
+    grid['weight'] = grid['rel like']/np.sum(grid['rel like'])  # sum(p) = 1 for resampling
     if verbose:
         print(f'{grid}')
     return grid
@@ -83,7 +83,7 @@ def resample_grid(scored_grid, M, verbose=True):
         print('resampling grid...')
     start_idx = np.random.choice(np.arange(len(scored_grid.index)), size=M, replace=True, p=scored_grid['weight'])
     start_p_sets = scored_grid.iloc[start_idx]
-    ess = np.sum(scored_grid['weight']) / np.max(scored_grid['weight'])
+    ess = np.sum(scored_grid['rel like'])  # ESS = sum(likelihood)/max
     if verbose:
         print(start_p_sets)
         print(f'ESS estimate: {ess}')
