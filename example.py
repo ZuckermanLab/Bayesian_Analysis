@@ -4,7 +4,11 @@
 import MeshGrid as mg
 import scipy.stats as stats
 import numpy as np
+import pandas as pd
 import ray
+#for debugging
+import gc
+import psutil
 
 
 def calc_y(p):
@@ -48,20 +52,62 @@ if __name__ == '__main__':
                ('c_3', 0.1, 1, 3),
                ('c_4', 0.1, 1, 3),
                ('sigma', 1e-3, 3e-3, 3)]
+
     mg_df = mg.create_grid_coord(p_input, verbose=True)  # calculate parameter mesh grid
-    mg_id = ray.put(mg_df)  # ray stores the object id of the mesh grid --> don't have to make copies
 
     @ray.remote  # used to run ray remote function - this runs in parallel
     def f(i, df):
         """ This calculates the log likelihood based on the observed data and theta"""
         return mg.calc_logl(y_obs, theta=df.iloc[i], func=calc_y)
 
-    logl_id_list = []
-    print('calculating log-likelihood...')
-    for i in range(len(mg_df.index)):
-        logl_id_list.append( f.remote(i, mg_id))  # list (in the same order as meh grid index)
-    logl_list = ray.get(logl_id_list)  # run ray remote functions
 
-    mg_df['logl'] = logl_list  # new df for log-likelihoods
-    score_df = mg.score_grid(mg_df, verbose=True)  # df relative log-likelihood, likelihood, probability density
-    start_points, ESS = mg.resample_grid(score_df, N, verbose=True)  # df of start points, effective sample size
+    # batch procedure
+    b_size = 10000  # how many parameter sets per batch
+    mg_df_b = mg_df.groupby(np.arange(len(mg_df)) // b_size)  # note: integer divison for non-even grouping
+    b_w = {}  # weights for each batch
+    s = []
+    for i, mg_b in mg_df_b:
+        mg_id = ray.put(mg_b)
+        print(f'calculating log-likelihood for batch {i}...')
+        logl_ref_list_b = []
+        for j in range(len(mg_b.index)):
+            logl_ref_list_b.append(f.remote(j, mg_id))  # list (in the same order as meh grid index)
+        logl_list_b = ray.get(logl_ref_list_b)  # run ray remote functions
+        mg_b['logl'] = logl_list_b  # add logl to dataframe
+        score_df = mg.score_grid(mg_b, verbose=True)  # score batch
+        start_points, ESS = mg.resample_grid(score_df, N, verbose=True)  # down sample to N
+        s.append(start_points)  # add to list of starting point sub samples
+        b_w[f'batch {i}'] = start_points['weight'].sum()  # add batch weight
+
+
+        # debugging: use this to see how much virtual memory is being used and to reset it
+        print('\ndebugging:')
+        print(f'memory usage {psutil.virtual_memory().percent}')
+        print('reseting memory...\n')
+        gc.collect()
+
+    b_w_df = pd.DataFrame(list(b_w.items()), columns=['batch n', 'batch weight'])
+    b_w_df['rel batch weight'] = b_w_df['batch weight']/b_w_df['batch weight'].sum()
+
+    b_idx = np.random.choice(np.arange(len(b_w_df.index)), size=N, replace=True, p=b_w_df['rel batch weight'])
+
+    starting_points = []
+    for i in b_idx:
+        ss = s[i]  # select batch based on relative batch weight (b_idx)
+        sp = ss.sample()  # randomly sample from group
+        starting_points.append(sp)
+
+    print(starting_points)
+
+    # # regular procedure
+    # mg_id = ray.put(mg_df)  # ray stores the object id of the mesh grid --> don't have to make copies
+    #
+    # logl_id_list = []
+    # print('calculating log-likelihood...')
+    # for i in range(len(mg_df.index)):
+    #     logl_id_list.append( f.remote(i, mg_id))  # list (in the same order as meh grid index)
+    # logl_list = ray.get(logl_id_list)  # run ray remote functions
+    #
+    # mg_df['logl'] = logl_list  # new df for log-likelihoods
+    # score_df = mg.score_grid(mg_df, verbose=True)  # df relative log-likelihood, likelihood, probability density
+    # start_points, ESS = mg.resample_grid(score_df, N, verbose=True)  # df of start points, effective sample size
