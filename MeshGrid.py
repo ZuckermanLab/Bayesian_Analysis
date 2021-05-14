@@ -3,17 +3,18 @@
 import numpy as np
 import pandas as pd
 
-### NOT CURRENTLY USED
+
 def calc_logl(y_obs, theta, func):
     """
-    NOT CURRENTLY USED Calculates the (normal) log-likelihood
     :param y_obs: array of observed data
     :param theta: array of parameters - a single parameter set - SIGMA at the end
     :param func: function which inputs a list of parameters and outputs the predicted value
     :return: the log-likelihood probability
     """
 
-    p = theta[:-1]
+
+    #p = theta[:-1]
+    p = theta
     sigma = theta[-1]
     y_pred = func(p)
     # Note: Normal log likelihood = -(n/2)ln(2*pi) -(n/2)ln(sigma^2) -(1/(2simga^2))SUM(x_i-mu)^2
@@ -63,7 +64,7 @@ def score_grid(grid, verbose=True):
     if verbose:
         print('scoring grid...')
     grid['rel logl'] = (grid['logl'] - np.max(grid['logl']))  # log(p/p_max) --> log(p) -max(log(p))
-    grid['rel like'] = np.exp(grid['rel logl'])  # log(p) --> p = exp(log(p))
+    grid['rel like'] = 10**(grid['rel logl'])  # log(p) --> p = 10**(log(p))
     grid['weight'] = grid['rel like']/np.sum(grid['rel like'])  # sum(p) = 1 for resampling
     if verbose:
         print(f'{grid}')
@@ -100,16 +101,18 @@ def score_grid_batch(grid, verbose=True):
 
     if verbose:
         print('scoring grid...')
-    grid['rel logl'] = (grid['logl'] - np.max(grid['logl']))  # log(p/p_max) --> log(p) -max(log(p))
-    grid['rel like'] = np.exp(grid['rel logl'])  # log(p) --> p = exp(log(p))
+    log_p_max = np.max(grid['logl'])
+    grid['rel logl'] = (grid['logl'] - log_p_max)  # log(p/p_max) --> log(p) -max(log(p))
+    grid['rel like'] = 10**(grid['rel logl'])  # log(p) --> p = 10**(log(p))
     grid['rel like norm'] = grid['rel like']/np.sum(grid['rel like'])  # sum(p) = 1 for resampling
     ess = np.sum(grid['rel like'])  # ESS = sum(likelihood)/max
-    b_w_log10 = np.log10(ess) + np.max(grid['logl'])
+    b_w_log10 = np.log10(ess) + log_p_max
     if verbose:
         print(f'{grid}')
         print(f'ess: {ess}')
         print(f'log10(batch weight): {b_w_log10}')
-    return grid, ess, b_w_log10
+        print(f'log10(p_max): {b_w_log10}')
+    return grid, ess, b_w_log10, log_p_max
 
 
 def resample_grid_batch(scored_grid, M, verbose=True):
