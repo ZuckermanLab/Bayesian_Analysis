@@ -12,7 +12,7 @@ def calc_logl(y_obs, theta, func):
     :return: the log-likelihood probability
     """
 
-
+    #print(theta)
     #p = theta[:-1]
     p = theta
     sigma = theta[-1]
@@ -63,8 +63,8 @@ def score_grid(grid, verbose=True):
 
     if verbose:
         print('scoring grid...')
-    grid['rel logl'] = (grid['logl'] - np.max(grid['logl']))  # log(p/p_max) --> log(p) -max(log(p))
-    grid['rel like'] = 10**(grid['rel logl'])  # log(p) --> p = 10**(log(p))
+    grid['rel logl'] = (grid['logl'] - np.max(grid['logl']))  # ln(p/p_max) --> ln(p) -max(ln(p))
+    grid['rel like'] = np.exp(grid['rel logl'])  # log(p) --> p = e**(ln(p))
     grid['weight'] = grid['rel like']/np.sum(grid['rel like'])  # sum(p) = 1 for resampling
     if verbose:
         print(f'{grid}')
@@ -102,8 +102,8 @@ def score_grid_batch(grid, verbose=True):
     if verbose:
         print('scoring grid...')
     log_p_max = np.max(grid['logl'])
-    grid['rel logl'] = (grid['logl'] - log_p_max)  # log(p/p_max) --> log(p) -max(log(p))
-    grid['rel like'] = 10**(grid['rel logl'])  # log(p) --> p = 10**(log(p))
+    grid['rel logl'] = (grid['logl'] - log_p_max)  # log(p/p_max) --> ln(p) -max(ln(p))
+    grid['rel like'] = np.exp(grid['rel logl'])  # log(p) --> p = e**(log(p))
     grid['rel like norm'] = grid['rel like']/np.sum(grid['rel like'])  # sum(p) = 1 for resampling
     ess = np.sum(grid['rel like'])  # ESS = sum(likelihood)/max
     b_w_log10 = np.log10(ess) + log_p_max
